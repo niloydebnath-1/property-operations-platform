@@ -1,0 +1,684 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         String        @default("STAFF") // SUPER_ADMIN, COMPANY_ADMIN, PROPERTY_MANAGER, MAINTENANCE_MANAGER, TECHNICIAN, VENDOR, CALL_AGENT, ACCOUNTANT, CLIENT, OWNER
+  phone        String?
+  avatar       String?
+  department   String?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  createdRecords   Record[]      @relation("RecordCreator")
+  logs             ActivityLog[]
+  managedProperties Property[]   @relation("PropertyManager")
+  assignedWorkOrders WorkOrder[] @relation("AssignedUser")
+  createdWorkOrders  WorkOrder[] @relation("CreatedByUser")
+  inspections        Inspection[] @relation("InspectorUser")
+  handledCalls       CallLog[]   @relation("AgentCalls")
+  notifications      Notification[]
+  employeeProfile    Employee?
+}
+
+model Property {
+  id           String        @id @default(cuid())
+  propertyCode String        @unique
+  name         String
+  type         String        @default("RESIDENTIAL") // RESIDENTIAL, COMMERCIAL, INDUSTRIAL, MIXED
+  address      String
+  city         String?
+  state        String?
+  zipCode      String?
+  timezone     String        @default("UTC")
+  status       String        @default("ACTIVE") // ACTIVE, INACTIVE, UNDER_MAINTENANCE
+  notes        String?       @db.Text
+  managerId    String?
+  manager      User?         @relation("PropertyManager", fields: [managerId], references: [id])
+  ownerId      String?
+  owner        Contact?      @relation("PropertyOwner", fields: [ownerId], references: [id])
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  units            Unit[]
+  assets           Asset[]
+  workOrders       WorkOrder[]
+  serviceRequests  ServiceRequest[]
+  inspections      Inspection[]
+  leases           Lease[]
+  expenses         Expense[]
+  invoices         Invoice[]
+  documents        Document[]
+  callLogs         CallLog[]
+  emailMessages    EmailMessage[]
+  maintenancePlans MaintenancePlan[]
+
+  @@index([propertyCode])
+  @@index([status])
+}
+
+model Unit {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitCode    String
+  floor       String?
+  type        String   @default("APARTMENT") // APARTMENT, OFFICE, STUDIO, RETAIL, STORAGE
+  areaSqFt    Float?
+  rentAmount  Decimal? @db.Decimal(10, 2)
+  status      String   @default("VACANT") // OCCUPIED, VACANT, UNDER_MAINTENANCE, RESERVED
+  features    String?  @db.Text
+  currentTenantId String?
+  currentTenant   Contact? @relation("UnitTenant", fields: [currentTenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  leases          Lease[]
+  serviceRequests ServiceRequest[]
+  workOrders      WorkOrder[]
+  inspections     Inspection[]
+  assets          Asset[]
+
+  @@unique([propertyId, unitCode])
+  @@index([status])
+}
+
+model Contact {
+  id              String   @id @default(cuid())
+  contactType     String   @default("CLIENT") // CLIENT, TENANT, OWNER, VENDOR_REP
+  name            String
+  company         String?
+  email           String?
+  phone           String?
+  address         String?
+  status          String   @default("ACTIVE")
+  preferredChannel String  @default("EMAIL") // EMAIL, PHONE, SMS
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  ownedProperties Property[]       @relation("PropertyOwner")
+  tenantedUnits   Unit[]           @relation("UnitTenant")
+  leases          Lease[]
+  serviceRequests ServiceRequest[]
+  callLogs        CallLog[]
+  emailMessages   EmailMessage[]
+  invoices        Invoice[]
+  supportCases    SupportCase[]
+
+  @@index([contactType])
+  @@index([email])
+  @@index([phone])
+}
+
+model Lease {
+  id          String    @id @default(cuid())
+  leaseNumber String    @unique
+  propertyId  String
+  property    Property  @relation(fields: [propertyId], references: [id])
+  unitId      String
+  unit        Unit      @relation(fields: [unitId], references: [id])
+  contactId   String
+  tenant      Contact   @relation(fields: [contactId], references: [id])
+  startDate   DateTime
+  endDate     DateTime
+  rentAmount  Decimal   @db.Decimal(10, 2)
+  deposit     Decimal?  @db.Decimal(10, 2)
+  status      String    @default("ACTIVE") // ACTIVE, EXPIRED, TERMINATED, PENDING
+  terms       String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+}
+
+model ServiceRequest {
+  id          String    @id @default(cuid())
+  reference   String    @unique
+  title       String
+  description String    @db.Text
+  category    String    @default("PLUMBING") // PLUMBING, ELECTRICAL, HVAC, APPLIANCE, STRUCTURAL, CLEANING, SECURITY, GENERAL
+  priority    String    @default("NORMAL") // EMERGENCY, URGENT, HIGH, NORMAL, LOW
+  status      String    @default("SUBMITTED") // SUBMITTED, UNDER_REVIEW, AWAITING_INFO, CONVERTED_TO_WO, REJECTED, RESOLVED, CLOSED
+  source      String    @default("PORTAL") // PORTAL, CALL, EMAIL, STAFF
+  propertyId  String
+  property    Property  @relation(fields: [propertyId], references: [id])
+  unitId      String?
+  unit        Unit?     @relation(fields: [unitId], references: [id])
+  requesterId String?
+  requester   Contact?  @relation(fields: [requesterId], references: [id])
+  accessNotes String?
+  rejectedReason String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workOrders   WorkOrder[]
+  callLogs     CallLog[]
+  supportCases SupportCase[]
+
+  @@index([reference])
+  @@index([status])
+  @@index([priority])
+}
+
+model WorkOrder {
+  id             String    @id @default(cuid())
+  reference      String    @unique
+  title          String
+  description    String    @db.Text
+  category       String    @default("GENERAL")
+  priority       String    @default("NORMAL") // EMERGENCY, URGENT, HIGH, NORMAL, LOW
+  status         String    @default("DRAFT") // DRAFT, SUBMITTED, UNDER_REVIEW, AWAITING_INFO, PENDING_APPROVAL, APPROVED, REJECTED, ASSIGNED, SCHEDULED, IN_PROGRESS, ON_HOLD, COMPLETED, PENDING_VERIFICATION, VERIFIED, CLOSED, CANCELLED
+  propertyId     String
+  property       Property  @relation(fields: [propertyId], references: [id])
+  unitId         String?
+  unit           Unit?     @relation(fields: [unitId], references: [id])
+  requestId      String?
+  serviceRequest ServiceRequest? @relation(fields: [requestId], references: [id])
+  assetId        String?
+  asset          Asset?    @relation(fields: [assetId], references: [id])
+  createdById    String
+  createdBy      User      @relation("CreatedByUser", fields: [createdById], references: [id])
+
+  assigneeType   String?   // TECHNICIAN, VENDOR
+  assignedUserId String?
+  assignedUser   User?     @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  assignedVendorId String?
+  assignedVendor Vendor?   @relation(fields: [assignedVendorId], references: [id])
+
+  estimatedCost  Decimal?  @db.Decimal(10, 2)
+  actualCost     Decimal?  @db.Decimal(10, 2)
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  completedAt    DateTime?
+  verifiedAt     DateTime?
+  closedAt       DateTime?
+  holdReason     String?
+  cancelReason   String?
+  reworkNotes    String?
+  closureSummary String?   @db.Text
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  events         WorkOrderEvent[]
+  assignments    WorkOrderAssignment[]
+  checklists     WorkOrderChecklist[]
+  expenses       Expense[]
+  invoices       Invoice[]
+  calendarEvents CalendarEvent[]
+  callLogs       CallLog[]
+
+  @@index([reference])
+  @@index([status])
+  @@index([priority])
+}
+
+model WorkOrderEvent {
+  id          String    @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  fromStatus  String?
+  toStatus    String
+  actorId     String?
+  actorName   String?
+  reason      String?
+  detail      String?   @db.Text
+  createdAt   DateTime  @default(now())
+
+  @@index([workOrderId])
+}
+
+model WorkOrderAssignment {
+  id           String    @id @default(cuid())
+  workOrderId  String
+  workOrder    WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  assigneeType String    // TECHNICIAN, VENDOR
+  assigneeId   String
+  assigneeName String
+  status       String    @default("ASSIGNED") // ASSIGNED, ACCEPTED, DECLINED, WITHDRAWN, COMPLETED
+  declinedReason String?
+  assignedAt   DateTime  @default(now())
+  acceptedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([workOrderId])
+}
+
+model WorkOrderChecklist {
+  id          String    @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  task        String
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  completedBy String?
+  notes       String?
+
+  @@index([workOrderId])
+}
+
+model Asset {
+  id             String    @id @default(cuid())
+  assetCode      String    @unique
+  name           String
+  category       String    // HVAC, ELEVATOR, PLUMBING_PUMP, ELECTRICAL_PANEL, FIRE_ALARM, APPLIANCE, ROOFING
+  propertyId     String
+  property       Property  @relation(fields: [propertyId], references: [id])
+  unitId         String?
+  unit           Unit?     @relation(fields: [unitId], references: [id])
+  serialNo       String?
+  modelNo        String?
+  manufacturer   String?
+  installedAt    DateTime?
+  warrantyExpiry DateTime?
+  condition      String    @default("GOOD") // EXCELLENT, GOOD, FAIR, POOR, CRITICAL
+  status         String    @default("OPERATIONAL") // OPERATIONAL, UNDER_MAINTENANCE, DECOMMISSIONED, RETIRED
+  lastServiceDate DateTime?
+  notes          String?   @db.Text
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workOrders       WorkOrder[]
+  maintenancePlans MaintenancePlan[]
+
+  @@index([assetCode])
+  @@index([category])
+  @@index([status])
+}
+
+model MaintenancePlan {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?   @db.Text
+  propertyId     String
+  property       Property  @relation(fields: [propertyId], references: [id])
+  assetId        String?
+  asset          Asset?    @relation(fields: [assetId], references: [id])
+  frequency      String    @default("MONTHLY") // DAILY, WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, BIANNUAL, ANNUAL
+  recurrenceRule String?   // cron or rule text
+  checklistJson  Json?
+  nextDue        DateTime
+  lastRunAt      DateTime?
+  active         Boolean   @default(true)
+  assignedTeam   String?
+  estimatedCost  Decimal?  @db.Decimal(10, 2)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([nextDue])
+  @@index([active])
+}
+
+model Inspection {
+  id             String    @id @default(cuid())
+  inspectionCode String    @unique
+  propertyId     String
+  property       Property  @relation(fields: [propertyId], references: [id])
+  unitId         String?
+  unit           Unit?     @relation(fields: [unitId], references: [id])
+  inspectorId    String?
+  inspector      User?     @relation("InspectorUser", fields: [inspectorId], references: [id])
+  type           String    @default("ROUTINE") // ROUTINE, MOVE_IN, MOVE_OUT, SAFETY, ANNUAL
+  scheduledAt    DateTime
+  completedAt    DateTime?
+  status         String    @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
+  result         String?   // PASS, FAIL, REQUIRES_ACTION
+  findings       String?   @db.Text
+  score          Int?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+}
+
+model Vendor {
+  id                String    @id @default(cuid())
+  vendorCode        String    @unique
+  legalName         String
+  tradeName         String?
+  email             String
+  phone             String
+  serviceCategories String    // comma-separated or text: HVAC, Electrical, Plumbing, Roofing, Cleaning
+  serviceArea       String    // coverage zones/cities
+  status            String    @default("ACTIVE") // PENDING, ACTIVE, SUSPENDED, INACTIVE
+  complianceStatus  String    @default("COMPLIANT") // COMPLIANT, WARNING, EXPIRED, NON_COMPLIANT
+  rating            Float     @default(5.0)
+  taxId             String?
+  bankName          String?
+  bankAccount       String?
+  notes             String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  workOrders        WorkOrder[]
+  complianceDocs    VendorComplianceDoc[]
+  contracts         VendorContract[]
+  expenses          Expense[]
+  invoices          Invoice[]
+
+  @@index([vendorCode])
+  @@index([status])
+}
+
+model VendorComplianceDoc {
+  id             String    @id @default(cuid())
+  vendorId       String
+  vendor         Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  docType        String    // LICENSE, GENERAL_LIABILITY, WORKERS_COMP, BOND, W9
+  docNumber      String?
+  issuedAt       DateTime?
+  expiryDate     DateTime
+  verified       Boolean   @default(false)
+  verifiedAt     DateTime?
+  verifiedBy     String?
+  fileUrl        String?
+  status         String    @default("ACTIVE") // ACTIVE, EXPIRING_SOON, EXPIRED
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([expiryDate])
+  @@index([vendorId])
+}
+
+model VendorContract {
+  id             String    @id @default(cuid())
+  contractCode   String    @unique
+  vendorId       String
+  vendor         Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  title          String
+  startDate      DateTime
+  endDate        DateTime
+  rateDetails    String?   @db.Text
+  terms          String?   @db.Text
+  status         String    @default("ACTIVE") // ACTIVE, EXPIRED, TERMINATED
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([vendorId])
+}
+
+model CallLog {
+  id              String    @id @default(cuid())
+  callRef         String    @unique
+  direction       String    @default("INBOUND") // INBOUND, OUTBOUND
+  callerName      String?
+  callerPhone     String
+  agentId         String?
+  agent           User?     @relation("AgentCalls", fields: [agentId], references: [id])
+  contactId       String?
+  contact         Contact?  @relation(fields: [contactId], references: [id])
+  propertyId      String?
+  property        Property? @relation(fields: [propertyId], references: [id])
+  serviceRequestId String?
+  serviceRequest  ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+  workOrderId     String?
+  workOrder       WorkOrder? @relation(fields: [workOrderId], references: [id])
+  durationSeconds Int       @default(0)
+  outcome         String    @default("RESOLVED") // REQUEST_CREATED, INFO_PROVIDED, ESCALATED, CALLBACK_SCHEDULED, MISSED
+  notes           String?   @db.Text
+  recordingUrl    String?
+  followUpDate    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([callRef])
+  @@index([callerPhone])
+  @@index([direction])
+}
+
+model EmailMessage {
+  id           String    @id @default(cuid())
+  mailbox      String    @default("support@propertyops.com")
+  direction    String    @default("INBOUND") // INBOUND, OUTBOUND
+  fromEmail    String
+  toEmail      String
+  subject      String
+  body         String    @db.Text
+  threadId     String?
+  status       String    @default("RECEIVED") // RECEIVED, SENT, DRAFT, FAILED
+  contactId    String?
+  contact      Contact?  @relation(fields: [contactId], references: [id])
+  propertyId   String?
+  property     Property? @relation(fields: [propertyId], references: [id])
+  isRead       Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([threadId])
+  @@index([fromEmail])
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  title       String
+  eventType   String    @default("WORK_ORDER") // WORK_ORDER, INSPECTION, MAINTENANCE, APPOINTMENT, SHIFT
+  startAt     DateTime
+  endAt       DateTime
+  workOrderId String?
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id])
+  assignee    String?
+  location    String?
+  description String?   @db.Text
+  status      String    @default("SCHEDULED")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([startAt, endAt])
+}
+
+model Invoice {
+  id          String    @id @default(cuid())
+  invoiceNo   String    @unique
+  partyType   String    @default("CLIENT") // CLIENT, TENANT, OWNER, VENDOR
+  contactId   String?
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  vendorId    String?
+  vendor      Vendor?   @relation(fields: [vendorId], references: [id])
+  propertyId  String?
+  property    Property? @relation(fields: [propertyId], references: [id])
+  workOrderId String?
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id])
+  subtotal    Decimal   @db.Decimal(10, 2)
+  tax         Decimal   @default(0.00) @db.Decimal(10, 2)
+  discount    Decimal   @default(0.00) @db.Decimal(10, 2)
+  total       Decimal   @db.Decimal(10, 2)
+  balanceDue  Decimal   @db.Decimal(10, 2)
+  dueDate     DateTime
+  status      String    @default("ISSUED") // DRAFT, ISSUED, PARTIALLY_PAID, PAID, OVERDUE, VOID, DISPUTED
+  notes       String?   @db.Text
+  issuedAt    DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines       InvoiceLine[]
+  payments    Payment[]
+
+  @@index([invoiceNo])
+  @@index([status])
+}
+
+model InvoiceLine {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal  @default(1.00) @db.Decimal(10, 2)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id            String    @id @default(cuid())
+  paymentRef    String    @unique
+  invoiceId     String
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id])
+  amount        Decimal   @db.Decimal(10, 2)
+  paymentMethod String    @default("BANK_TRANSFER") // CASH, CARD, BANK_TRANSFER, CHEQUE, ONLINE
+  status        String    @default("SUCCESS") // SUCCESS, PENDING, FAILED, REFUNDED
+  paidAt        DateTime  @default(now())
+  referenceNotes String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([invoiceId])
+}
+
+model Expense {
+  id          String    @id @default(cuid())
+  expenseRef  String    @unique
+  propertyId  String
+  property    Property  @relation(fields: [propertyId], references: [id])
+  workOrderId String?
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id])
+  vendorId    String?
+  vendor      Vendor?   @relation(fields: [vendorId], references: [id])
+  category    String    // MATERIALS, LABOR, PERMITS, EQUIPMENT_RENTAL, UTILITIES, MISC
+  amount      Decimal   @db.Decimal(10, 2)
+  tax         Decimal   @default(0.00) @db.Decimal(10, 2)
+  receiptUrl  String?
+  status      String    @default("APPROVED") // PENDING, APPROVED, REJECTED, REIMBURSED
+  description String?
+  expenseDate DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([propertyId])
+}
+
+model Document {
+  id          String    @id @default(cuid())
+  fileName    String
+  fileUrl     String
+  fileCategory String   @default("GENERAL") // LEASE, COMPLIANCE, INVOICE, INSPECTION_REPORT, BLUEPRINT, PHOTO, CONTRACT
+  entityType  String    @default("PROPERTY") // PROPERTY, UNIT, WORK_ORDER, VENDOR, CLIENT
+  entityId    String
+  propertyId  String?
+  property    Property? @relation(fields: [propertyId], references: [id])
+  fileSizeKb  Int       @default(100)
+  mimeType    String    @default("application/pdf")
+  expiryDate  DateTime?
+  uploadedBy  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([entityType, entityId])
+  @@index([expiryDate])
+}
+
+model SupportCase {
+  id               String    @id @default(cuid())
+  caseNumber       String    @unique
+  title            String
+  description      String    @db.Text
+  severity         String    @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  status           String    @default("OPEN") // OPEN, IN_INVESTIGATION, ESCALATED, RESOLVED, CLOSED
+  contactId        String?
+  contact          Contact?  @relation(fields: [contactId], references: [id])
+  serviceRequestId String?
+  serviceRequest   ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+  resolution       String?   @db.Text
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([caseNumber])
+  @@index([status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  category  String   @default("SYSTEM") // WORK_ORDER, APPROVAL, SLA, COMPLIANCE, FINANCE, SYSTEM
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model Employee {
+  id             String    @id @default(cuid())
+  employeeCode   String    @unique
+  userId         String?   @unique
+  user           User?     @relation(fields: [userId], references: [id])
+  name           String
+  email          String
+  phone          String?
+  department     String    @default("MAINTENANCE") // OPERATIONS, MAINTENANCE, FINANCE, CUSTOMER_SUPPORT, MANAGEMENT
+  jobTitle       String
+  shiftHours     String    @default("09:00 - 17:00")
+  status         String    @default("ACTIVE") // ACTIVE, ON_LEAVE, TERMINATED
+  hireDate       DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([department])
+  @@index([status])
+}
+
+model AutomationRule {
+  id          String   @id @default(cuid())
+  name        String
+  triggerType String   // SLA_BREACH, PM_DUE, COMPLIANCE_EXPIRING, STATUS_CHANGE
+  condition   String?  @db.Text
+  actionType  String   // NOTIFY_MANAGER, AUTO_DISPATCH, ESCALATE, GENERATE_INVOICE
+  isActive    Boolean  @default(true)
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  category    String   @default("GENERAL") // GENERAL, COMPANY, WORKFLOW, NOTIFICATION, INTEGRATION
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
+
+// Retaining legacy Record and ActivityLog for compatibility
+model Record {
+  id          String   @id @default(cuid())
+  module      String
+  title       String
+  status      String   @default("ACTIVE")
+  payload     Json
+  createdById String
+  createdBy   User     @relation("RecordCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([module, status])
+  @@index([title])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  module    String?
+  recordId  String?
+  detail    String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

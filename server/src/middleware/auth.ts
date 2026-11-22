@@ -1,0 +1,4 @@
+import {Request,Response,NextFunction} from "express"; import jwt from "jsonwebtoken"; import {env} from "../config/env";
+declare global { namespace Express { interface Request { user?: {id:string;role:string;email:string} } } }
+export function authenticate(req:Request,res:Response,next:NextFunction){const h=req.headers.authorization;if(!h?.startsWith("Bearer "))return res.status(401).json({message:"Authentication required"});try{req.user=jwt.verify(h.slice(7),env.jwtSecret) as any;next()}catch{return res.status(401).json({message:"Invalid or expired token"})}}
+export function allowRoles(...roles:string[]){return (req:Request,res:Response,next:NextFunction)=>{if(!req.user||(!roles.includes(req.user.role)&&req.user.role!=="SUPER_ADMIN"))return res.status(403).json({message:"You do not have permission"});next()}}

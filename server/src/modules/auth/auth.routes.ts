@@ -1,0 +1,5 @@
+import {Router} from "express"; import bcrypt from "bcryptjs"; import jwt from "jsonwebtoken"; import {z} from "zod"; import {prisma} from "../../lib/prisma"; import {env} from "../../config/env"; import {authenticate} from "../../middleware/auth";
+const router=Router(); const loginSchema=z.object({email:z.string().email(),password:z.string().min(8)});
+router.post("/login",async(req,res,next)=>{try{const input=loginSchema.parse(req.body);const user=await prisma.user.findUnique({where:{email:input.email.toLowerCase()}});if(!user||!user.isActive||!(await bcrypt.compare(input.password,user.passwordHash)))return res.status(401).json({message:"Invalid email or password"});const token=jwt.sign({id:user.id,email:user.email,role:user.role},env.jwtSecret,{expiresIn:"12h"});res.json({token,user:{id:user.id,name:user.name,email:user.email,role:user.role}})}catch(e){next(e)}});
+router.get("/me",authenticate,async(req,res)=>{const user=await prisma.user.findUnique({where:{id:req.user!.id},select:{id:true,name:true,email:true,role:true,isActive:true}});res.json({user})});
+export default router;
