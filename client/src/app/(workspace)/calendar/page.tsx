@@ -31,6 +31,14 @@ const MONTH_NAMES = [
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function toLocalDateKey(d: Date | string): string {
+  const dateObj = typeof d === "string" ? new Date(d) : d;
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const day = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function CalendarPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,11 +84,15 @@ export default function CalendarPage() {
   const month = currentDate.getMonth();
 
   function prevMonth() {
-    setCurrentDate(new Date(year, month - 1, 1));
+    const nextDate = new Date(year, month - 1, 1);
+    setCurrentDate(nextDate);
+    setSelectedDate(toLocalDateKey(nextDate));
   }
 
   function nextMonth() {
-    setCurrentDate(new Date(year, month + 1, 1));
+    const nextDate = new Date(year, month + 1, 1);
+    setCurrentDate(nextDate);
+    setSelectedDate(toLocalDateKey(nextDate));
   }
 
   function jumpToToday() {
@@ -90,8 +102,11 @@ export default function CalendarPage() {
 
   // Filtered Events
   const filteredEvents = useMemo(() => {
-    if (typeFilter === "ALL") return events;
-    return events.filter((e) => e.eventType === typeFilter);
+    let list = events;
+    if (typeFilter !== "ALL") {
+      list = events.filter((e) => e.eventType === typeFilter);
+    }
+    return [...list].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   }, [events, typeFilter]);
 
   // Generate Month Grid (42 cells: 6 weeks x 7 days)
@@ -110,7 +125,7 @@ export default function CalendarPage() {
         dateObj,
         dayNum: d,
         isCurrentMonth: false,
-        dateKey: dateObj.toISOString().slice(0, 10),
+        dateKey: toLocalDateKey(dateObj),
       });
     }
 
@@ -121,7 +136,7 @@ export default function CalendarPage() {
         dateObj,
         dayNum: d,
         isCurrentMonth: true,
-        dateKey: dateObj.toISOString().slice(0, 10),
+        dateKey: toLocalDateKey(dateObj),
       });
     }
 
@@ -133,7 +148,7 @@ export default function CalendarPage() {
         dateObj,
         dayNum: d,
         isCurrentMonth: false,
-        dateKey: dateObj.toISOString().slice(0, 10),
+        dateKey: toLocalDateKey(dateObj),
       });
     }
 
@@ -145,7 +160,7 @@ export default function CalendarPage() {
     const map: Record<string, any[]> = {};
     for (const ev of filteredEvents) {
       if (!ev.startAt) continue;
-      const key = new Date(ev.startAt).toISOString().slice(0, 10);
+      const key = toLocalDateKey(ev.startAt);
       if (!map[key]) map[key] = [];
       map[key].push(ev);
     }
@@ -163,12 +178,13 @@ export default function CalendarPage() {
     for (let i = 0; i < 7; i++) {
       const d = new Date(startOfWeek);
       d.setDate(startOfWeek.getDate() + i);
+      const dateKey = toLocalDateKey(d);
       days.push({
         dateObj: d,
         dayNum: d.getDate(),
         dayName: DAY_NAMES[d.getDay()],
-        dateKey: d.toISOString().slice(0, 10),
-        isToday: d.toISOString().slice(0, 10) === "2026-11-22",
+        dateKey,
+        isToday: dateKey === "2026-11-22",
       });
     }
     return days;
@@ -243,7 +259,7 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => {
-              setNewDate("2026-11-22");
+              setNewDate(selectedDate || toLocalDateKey(new Date(year, month, 1)));
               setShowScheduleModal(true);
             }}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
@@ -667,13 +683,35 @@ export default function CalendarPage() {
                 <div className="flex items-center gap-2 text-slate-700">
                   <Clock size={14} className="text-blue-600" />
                   <span>
-                    <strong>Start:</strong> {new Date(selectedEvent.startAt).toLocaleString()}
+                    <strong>Start:</strong>{" "}
+                    {new Date(selectedEvent.startAt).toLocaleDateString([], {
+                      weekday: "short",
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}{" "}
+                    at{" "}
+                    {new Date(selectedEvent.startAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-700">
                   <Clock size={14} className="text-slate-400" />
                   <span>
-                    <strong>End:</strong> {new Date(selectedEvent.endAt).toLocaleString()}
+                    <strong>End:</strong>{" "}
+                    {new Date(selectedEvent.endAt).toLocaleDateString([], {
+                      weekday: "short",
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}{" "}
+                    at{" "}
+                    {new Date(selectedEvent.endAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                 </div>
                 {selectedEvent.location && (
