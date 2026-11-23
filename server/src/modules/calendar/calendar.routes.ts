@@ -113,8 +113,8 @@ router.get("/", async (req, res, next) => {
       });
     }
 
-    // Sort chronologically
-    unifiedEvents.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    // Sort descending so newest / latest appointments appear at the top
+    unifiedEvents.sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime());
 
     res.json({ events: unifiedEvents });
   } catch (e) {

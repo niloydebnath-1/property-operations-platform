@@ -43,12 +43,13 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Calendar Navigation State
-  // Default to November 2026 (matching system date 2026-11-22)
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 10, 22));
-  const [selectedDate, setSelectedDate] = useState<string>("2026-11-22");
+  // Calendar Navigation State - Dynamic current date based on local system date
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(() => toLocalDateKey(new Date()));
   const [viewMode, setViewMode] = useState<"month" | "week" | "agenda">("month");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
+
+  const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
 
   // Modals
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
@@ -58,7 +59,7 @@ export default function CalendarPage() {
   // Schedule Appointment Form
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState("WORK_ORDER");
-  const [newDate, setNewDate] = useState("2026-11-22");
+  const [newDate, setNewDate] = useState<string>(() => toLocalDateKey(new Date()));
   const [newStartTime, setNewStartTime] = useState("09:00");
   const [newEndTime, setNewEndTime] = useState("11:00");
   const [newLocation, setNewLocation] = useState("Grand View Heights - Suite 204");
@@ -96,17 +97,25 @@ export default function CalendarPage() {
   }
 
   function jumpToToday() {
-    setCurrentDate(new Date(2026, 10, 22));
-    setSelectedDate("2026-11-22");
+    const now = new Date();
+    setCurrentDate(now);
+    setSelectedDate(toLocalDateKey(now));
   }
 
-  // Filtered Events
+  // Filtered Events - Sorted DESCENDING (newest / most recently appointed first at the top)
   const filteredEvents = useMemo(() => {
     let list = events;
     if (typeFilter !== "ALL") {
       list = events.filter((e) => e.eventType === typeFilter);
     }
-    return [...list].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    return [...list].sort((a, b) => {
+      const timeB = new Date(b.startAt).getTime();
+      const timeA = new Date(a.startAt).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      return createdB - createdA;
+    });
   }, [events, typeFilter]);
 
   // Generate Month Grid (42 cells: 6 weeks x 7 days)
@@ -184,7 +193,7 @@ export default function CalendarPage() {
         dayNum: d.getDate(),
         dayName: DAY_NAMES[d.getDay()],
         dateKey,
-        isToday: dateKey === "2026-11-22",
+        isToday: dateKey === todayKey,
       });
     }
     return days;
@@ -394,7 +403,7 @@ export default function CalendarPage() {
           <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 bg-slate-100/30">
             {monthGrid.map((cell, idx) => {
               const dayEvents = eventsByDate[cell.dateKey] || [];
-              const isToday = cell.dateKey === "2026-11-22";
+              const isToday = cell.dateKey === todayKey;
               const isSelected = selectedDate === cell.dateKey;
 
               return (
