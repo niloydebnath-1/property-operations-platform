@@ -33,6 +33,7 @@ export default function WorkOrdersPage() {
   const [category, setCategory] = useState("PLUMBING");
   const [woPriority, setWoPriority] = useState("NORMAL");
   const [estimatedCost, setEstimatedCost] = useState(150);
+  const [createError, setCreateError] = useState("");
 
   function load() {
     setLoading(true);
@@ -66,6 +67,7 @@ export default function WorkOrdersPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    setCreateError("");
     try {
       await api("/work-orders", {
         method: "POST",
@@ -81,9 +83,12 @@ export default function WorkOrdersPage() {
       setShowCreateModal(false);
       setTitle("");
       setDescription("");
+      setCreateError("");
       load();
     } catch (err: any) {
-      alert(err.message || "Failed to create work order");
+      const friendlyMsg = err.message || "Failed to create work order";
+      setCreateError(friendlyMsg);
+      alert(friendlyMsg);
     }
   }
 
@@ -381,12 +386,28 @@ export default function WorkOrdersPage() {
               <h2 className="text-base font-bold text-slate-900">Create Work Order</h2>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+                onClick={() => {
+                  setCreateError("");
+                  setShowCreateModal(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-xl font-bold cursor-pointer"
               >
                 ×
               </button>
             </div>
+
+            {createError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-700 flex items-center justify-between">
+                <span>⚠️ {createError}</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateError("")}
+                  className="text-red-500 hover:text-red-700 font-bold ml-2 cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-semibold text-slate-700">Property *</label>
@@ -409,9 +430,10 @@ export default function WorkOrdersPage() {
               <input
                 type="text"
                 required
+                minLength={3}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Repair leak under kitchen sink"
+                placeholder="e.g. Repair leak under kitchen sink (minimum 3 characters)"
                 className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
               />
             </div>
@@ -421,9 +443,10 @@ export default function WorkOrdersPage() {
               <textarea
                 rows={3}
                 required
+                minLength={5}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Detailed instructions for the technician or contractor..."
+                placeholder="Detailed instructions for technician or contractor (minimum 5 characters)..."
                 className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
               />
             </div>
